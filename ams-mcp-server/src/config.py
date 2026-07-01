@@ -73,11 +73,22 @@ def validate_config() -> None:
     solver_in_docker = _solver_exists_in_container()
 
     if not solver_here and not solver_in_docker:
-        issues.append(
-            f"CODE_ASTER_PATH does not exist on this machine: {CODE_ASTER_PATH}\n"
-            f"  -> If Code_Aster runs inside Docker, set DOCKER_CONTAINER_NAME in .env "
-            f"and ensure the container is running with run_aster at CODE_ASTER_PATH."
+        split_setup = bool(
+            DOCKER_CONTAINER_NAME and CODE_ASTER_PATH.startswith("/")
         )
+        if split_setup:
+            logging.getLogger("config").warning(
+                "Split setup: container '%s' not reachable at startup "
+                "(is Docker Desktop running?). MCP will start; "
+                "structural_analysis fails until the container is up.",
+                DOCKER_CONTAINER_NAME,
+            )
+        else:
+            issues.append(
+                f"CODE_ASTER_PATH does not exist on this machine: {CODE_ASTER_PATH}\n"
+                f"  -> If Code_Aster runs inside Docker, set DOCKER_CONTAINER_NAME in .env "
+                f"and ensure the container is running with run_aster at CODE_ASTER_PATH."
+            )
     elif not solver_here and solver_in_docker:
         logging.getLogger("config").info(
             "Split setup: Code_Aster will run via docker exec in container '%s'",

@@ -52,6 +52,101 @@ def _normalize_host_path(path: Path) -> Path:
     return Path(os.path.normcase(path.resolve()))
 
 
+def project_root() -> Path:
+    """ams-mcp-server package root (parent of src/)."""
+    return Path(__file__).resolve().parent.parent
+
+
+def container_to_host_path(container_path: str) -> Path:
+    """Map a container file path to the corresponding host path via bind mounts."""
+    container = PurePosixPath(container_path)
+
+    if config.DOCKER_WORKSPACE and config.DOCKER_WORKSPACE_HOST:
+        workspace_container = PurePosixPath(config.DOCKER_WORKSPACE.rstrip("/"))
+        workspace_host = Path(config.DOCKER_WORKSPACE_HOST)
+        try:
+            rel = container.relative_to(workspace_container)
+        except ValueError as exc:
+            raise ValueError(
+                f"Path {container_path} is not under configured container workspace "
+                f"{config.DOCKER_WORKSPACE}"
+            ) from exc
+        return _normalize_host_path(workspace_host / Path(rel.as_posix()))
+
+    for mount in _docker_mounts():
+        if mount.get("Type") != "bind":
+            continue
+        source = mount.get("Source")
+        destination = mount.get("Destination")
+        if not source or not destination:
+            continue
+        dest = PurePosixPath(destination.rstrip("/"))
+        try:
+            rel = container.relative_to(dest)
+        except ValueError:
+            continue
+        return _normalize_host_path(Path(source) / Path(rel.as_posix()))
+
+    raise ValueError(
+        f"No Docker bind mount contains container path {container_path}. "
+        f"Set DOCKER_WORKSPACE=/data/ams-mcp-server in .env or ensure the project "
+        f"is bind-mounted into '{config.DOCKER_CONTAINER_NAME}'."
+    )
+
+
+def resolve_host_mesh_path(mesh_path: str) -> Path:
+    """
+    Resolve a mesh path that may be host (Windows/Linux) or container (POSIX).
+
+    Claude often passes container paths like /data/ams-mcp-server/examples/test_beam.med
+    while mesh I/O runs on the Windows host. This function normalizes to a host path.
+    """
+    raw = mesh_path.strip()
+    if not raw:
+        raise ValueError("mesh_path is empty")
+
+    direct = Path(raw)
+    if direct.exists():
+        return _normalize_host_path(direct)
+
+    if raw.startswith("/") and uses_docker_execution():
+        try:
+            host = container_to_host_path(raw)
+            if host.exists():
+                logger.info("Resolved container mesh path %s -> %s", raw, host)
+                return host
+        except ValueError as exc:
+            logger.debug("container_to_host_path failed for %s: %s", raw, exc)
+
+    search_roots = [Path.cwd(), project_root()]
+    rel = raw.lstrip("/")
+    for root in search_roots:
+        candidate = root / rel
+        if candidate.exists():
+            logger.info("Resolved mesh path %s -> %s", raw, candidate)
+            return _normalize_host_path(candidate)
+
+    basename = PurePosixPath(raw).name
+    if basename and basename != raw:
+        for root in search_roots:
+            candidate = root / "examples" / basename
+            if candidate.exists():
+                logger.info("Resolved mesh path %s -> %s", raw, candidate)
+                return _normalize_host_path(candidate)
+
+    hint = (
+        f"Mesh file not found: {mesh_path}. "
+        f"Use a host path such as {project_root() / 'examples' / 'test_beam.med'}"
+    )
+    if uses_docker_execution():
+        try:
+            example_container = host_to_container_path(project_root() / "examples" / "test_beam.med")
+            hint += f", or the container path {example_container}"
+        except ValueError:
+            hint += ", or a container path under your Docker bind mount (e.g. /data/ams-mcp-server/examples/test_beam.med)"
+    raise ValueError(hint)
+
+
 def host_to_container_path(host_path: Path) -> str:
     """
     Map a host file path to the corresponding path inside the container,

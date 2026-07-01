@@ -31,7 +31,7 @@ from src import config
 from src import mesh_utils
 from src.models import StructuralAnalysisInput, Load
 from src.comm_generator import generate_comm
-from src.runner import generate_export, run_code_aster
+from src.runner import generate_export, run_code_aster, resolve_host_mesh_path
 from src.results_parser import parse_results
 from src.build_info import code_fingerprint
 from src.validation_engine import build_verdict
@@ -79,8 +79,9 @@ def run_structural_analysis(mesh_path: str, model_type: str, material: dict,
     """
     # --- 1. Validate inputs ---
     try:
+        host_mesh = resolve_host_mesh_path(mesh_path)
         params = StructuralAnalysisInput(
-            mesh_path=mesh_path,
+            mesh_path=str(host_mesh),
             model_type=model_type,
             material=material,
             boundary_conditions=boundary_conditions,

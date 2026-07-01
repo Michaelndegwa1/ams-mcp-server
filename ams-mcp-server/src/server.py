@@ -51,7 +51,10 @@ def structural_analysis(
     mechanical load (e.g. a beam, plate, or bracket).
 
     Args:
-        mesh_path: Absolute path to the .med mesh file.
+        mesh_path: Path to the .med mesh file. Accepts a host path (Windows or
+            Linux) or, in Docker split setups, the container path (e.g.
+            /data/ams-mcp-server/examples/test_beam.med). Call pipeline_status
+            for example paths on this server.
         material: dict with keys E (Young's modulus, MPa), NU (Poisson's ratio),
                   and optionally yield_strength_mpa.
         boundary_conditions: list of dicts, each with group_name (str) and
@@ -89,9 +92,11 @@ def pipeline_status() -> str:
     Call this to verify Claude is hitting the latest server code after a deploy
     or dev_server.py auto-reload.
     """
-    from src.runner import uses_docker_execution
+    from src.runner import uses_docker_execution, host_to_container_path, project_root
 
-    return json.dumps({
+    root = project_root()
+    example_host = root / "examples" / "test_beam.med"
+    payload = {
         "status": "ok",
         "code_fingerprint": code_fingerprint(),
         "transport": config.MCP_TRANSPORT,
@@ -99,7 +104,18 @@ def pipeline_status() -> str:
         "docker_execution": uses_docker_execution(),
         "docker_container": config.DOCKER_CONTAINER_NAME,
         "code_aster_path": config.CODE_ASTER_PATH,
-    })
+        "project_root": str(root),
+        "example_mesh_host": str(example_host) if example_host.exists() else None,
+    }
+    if uses_docker_execution() and example_host.exists():
+        try:
+            payload["example_mesh_container"] = host_to_container_path(example_host)
+        except ValueError:
+            payload["example_mesh_container"] = None
+    else:
+        payload["example_mesh_container"] = None
+
+    return json.dumps(payload)
 
 
 if __name__ == "__main__":
