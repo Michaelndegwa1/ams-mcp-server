@@ -1,0 +1,18 @@
+# Stable Cloudflare tunnel for AMS MCP (one-time setup)
+#
+# 1. cloudflared tunnel login
+# 2. cloudflared tunnel create ams-mcp
+# 3. cloudflared tunnel route dns ams-mcp mcp.YOURDOMAIN.com
+# 4. Copy this file to config.yml and fill in tunnel ID + credentials path
+# 5. .\scripts\start_tunnel.ps1 -Named
+#
+# Claude connector URL (stable forever):
+#   https://mcp.YOURDOMAIN.com/mcp
+
+tunnel: REPLACE-WITH-TUNNEL-UUID
+credentials-file: C:\Users\ADMIN\.cloudflared\REPLACE-WITH-TUNNEL-UUID.json
+
+ingress:
+  - hostname: mcp.YOURDOMAIN.com
+    service: http://localhost:8765
+  - service: http_status:404

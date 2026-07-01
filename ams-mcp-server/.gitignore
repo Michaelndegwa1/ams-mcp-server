@@ -1,0 +1,25 @@
+# Python
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Secrets and local config
+.env
+cloudflared/config.yml
+cloudflared/*.json
+
+# Simulation artifacts
+outputs/
+*.rmed
+fort.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Cloudflare binary (optional local copy)
+cloudflared.exe

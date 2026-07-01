@@ -1,0 +1,6 @@
+mcp[cli]
+pydantic
+python-dotenv
+h5py
+numpy
+watchfiles
