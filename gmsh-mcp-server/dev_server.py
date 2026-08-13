@@ -22,13 +22,14 @@ def _run_server() -> None:
 
 
 def main() -> None:
+    watch_paths = [PROJECT_ROOT / "src"]
+    env_file = PROJECT_ROOT / ".env"
+    if env_file.exists():
+        watch_paths.append(env_file)
+
     print("Gmsh MCP dev server — auto-reload enabled (watching src/ and .env)")
     print("Press Ctrl+C to stop.\n")
-    run_process(
-        PROJECT_ROOT / "src",
-        PROJECT_ROOT / ".env",
-        target=_run_server,
-    )
+    run_process(*watch_paths, target=_run_server)
 
 
 if __name__ == "__main__":
