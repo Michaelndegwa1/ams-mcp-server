@@ -5,3 +5,4 @@ watchfiles
 h5py
 numpy
 matplotlib
+plotly

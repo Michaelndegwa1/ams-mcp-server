@@ -12,7 +12,11 @@ logger = logging.getLogger("runner")
 
 
 def uses_docker() -> bool:
-    return bool(config.DOCKER_CONTAINER_NAME) and not config.resolve_freecad_cmd()
+    if not config.DOCKER_CONTAINER_NAME:
+        return False
+    if config.resolve_freecad_cmd():
+        return False
+    return config.freecad_in_docker()
 
 
 def _mounts() -> list[dict]:

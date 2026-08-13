@@ -126,6 +126,30 @@ def load_med_fields(result_path: str) -> dict:
             out["stress_path"] = stress_path
             out["stress_location"] = "gauss" if "MAI" in stress_path or "ELGA" in stress_path else "node"
 
+        if (
+            out.get("von_mises_mpa") is not None
+            and out.get("coordinates") is not None
+            and len(out["von_mises_mpa"]) != len(out["coordinates"])
+        ):
+            elem_nod_path = _find_path_any(
+                paths,
+                [("MAI", "TE4", "NOD"), ("MAI", "TET4", "NOD"), ("MAI", "HE8", "NOD")],
+            )
+            if elem_nod_path:
+                nod_flat = np.asarray(f[elem_nod_path][()], dtype=int)
+                npe = nod_flat.size // len(out["von_mises_mpa"])
+                if npe >= 3 and nod_flat.size == len(out["von_mises_mpa"]) * npe:
+                    conn = nod_flat.reshape(len(out["von_mises_mpa"]), npe)
+                    centroids = out["coordinates"][conn - 1].mean(axis=1)
+                    out["plot_coordinates"] = centroids
+                    out["plot_values"] = out["von_mises_mpa"]
+                    out["plot_location"] = "element_centroid"
+                    logger.info(
+                        "Mapped %d element stress values to centroids (%d nodes/elem)",
+                        len(out["von_mises_mpa"]),
+                        npe,
+                    )
+
         if out.get("displacement_mm") is not None and out.get("node_count") is None:
             out["node_count"] = len(out["displacement_mm"])
         if out.get("von_mises_mpa") is not None and out["node_count"] is None:

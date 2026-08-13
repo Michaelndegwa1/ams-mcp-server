@@ -9,7 +9,7 @@ from pathlib import Path
 from src.inp_mesh_utils import parse_inp_mesh
 from src.models import BoundaryCondition, Load, StructuralAnalysisInput
 
-_DOF_NUM = {"DX": 1, "DY": 2, "DZ": 3}
+_DOF_NUM = {"DX": 1, "DY": 2, "DZ": 3, "FX": 1, "FY": 2, "FZ": 3}
 
 
 def _nodes_from_elset(mesh: dict, elset_name: str) -> list[int]:
@@ -74,16 +74,31 @@ def generate_inp(
         lines.append(f"{nset}, {first}, {last}, 0")
 
     lines.append("")
-    if load_pressures:
-        lines.append("*DLOAD")
-        for ld in load_pressures:
-            if ld.group_name not in mesh["elsets"]:
-                raise ValueError(f"Load ELSET '{ld.group_name}' not found in mesh")
-            lines.append(f"{ld.group_name}, P, {ld.magnitude}")
-
-    lines.append("")
     lines.append("*STEP")
     lines.append("*STATIC")
+    cloads: list[str] = []
+    dloads: list[str] = []
+    for ld in load_pressures:
+        if ld.group_name in mesh["nsets"]:
+            dof = _DOF_NUM.get(ld.direction)
+            if not dof:
+                raise ValueError(f"Unknown load direction '{ld.direction}'")
+            nodes = sorted(mesh["nsets"][ld.group_name])
+            per_node = ld.magnitude / len(nodes)
+            for nid in nodes:
+                cloads.append(f"{nid}, {dof}, {per_node}")
+        elif ld.group_name in mesh["elsets"]:
+            dloads.append(f"{ld.group_name}, P, {ld.magnitude}")
+        else:
+            raise ValueError(f"Load group '{ld.group_name}' not found as NSET or ELSET in mesh")
+    if cloads:
+        lines.append("*CLOAD")
+        lines.extend(cloads)
+        lines.append("")
+    if dloads:
+        lines.append("*DLOAD")
+        lines.extend(dloads)
+        lines.append("")
     lines.append("*NODE FILE")
     lines.append("U")
     lines.append("*EL FILE")

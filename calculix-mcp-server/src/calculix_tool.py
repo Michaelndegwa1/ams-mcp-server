@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from src import config
 from src.build_info import code_fingerprint
 from src.inp_generator import generate_inp
-from src.inp_mesh_utils import compute_elset_area
+from src.inp_mesh_utils import compute_group_area, parse_inp_mesh
 from src.models import Load, StructuralAnalysisInput
 from src.runner import resolve_host_mesh_path, run_calculix, uses_docker_execution, host_to_container_path
 from src.frd_parser import parse_frd
@@ -26,19 +26,30 @@ logger = logging.getLogger("calculix_tool")
 def _convert_loads(params: StructuralAnalysisInput) -> tuple[list[Load], dict[str, float]]:
     converted: list[Load] = []
     areas: dict[str, float] = {}
-    mesh = Path(params.mesh_path)
+    mesh_path = Path(params.mesh_path)
+    mesh = parse_inp_mesh(mesh_path)
     for ld in params.loads:
         if ld.group_name not in areas:
-            areas[ld.group_name] = compute_elset_area(mesh, ld.group_name)
-        pressure = ld.magnitude / areas[ld.group_name]
-        converted.append(Load(group_name=ld.group_name, direction=ld.direction, magnitude=pressure))
-        logger.info(
-            "Load '%s': %.3f N over %.4f mm^2 -> P=%.6f N/mm^2",
-            ld.group_name,
-            ld.magnitude,
-            areas[ld.group_name],
-            pressure,
-        )
+            areas[ld.group_name] = compute_group_area(mesh_path, ld.group_name)
+        if ld.group_name in mesh["nsets"]:
+            converted.append(ld)
+            logger.info(
+                "Load '%s': %.3f N on NSET (%d nodes, area %.4f mm^2)",
+                ld.group_name,
+                ld.magnitude,
+                len(mesh["nsets"][ld.group_name]),
+                areas[ld.group_name],
+            )
+        else:
+            pressure = ld.magnitude / areas[ld.group_name]
+            converted.append(Load(group_name=ld.group_name, direction=ld.direction, magnitude=pressure))
+            logger.info(
+                "Load '%s': %.3f N over %.4f mm^2 -> P=%.6f N/mm^2",
+                ld.group_name,
+                ld.magnitude,
+                areas[ld.group_name],
+                pressure,
+            )
     return converted, areas
 
 

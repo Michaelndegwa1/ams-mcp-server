@@ -11,12 +11,17 @@ import json
 import logging
 import os
 import shlex
+import shutil
 import subprocess
 from pathlib import Path, PurePosixPath
 
 from src import config
 
 logger = logging.getLogger("runner")
+
+
+def _docker_bin() -> str:
+    return shutil.which("docker") or "docker"
 
 
 def uses_docker_execution() -> bool:
@@ -36,7 +41,7 @@ def _docker_mounts() -> list[dict]:
         return []
     try:
         result = subprocess.run(
-            ["docker", "inspect", config.DOCKER_CONTAINER_NAME, "--format", "{{json .Mounts}}"],
+            [_docker_bin(), "inspect", config.DOCKER_CONTAINER_NAME, "--format", "{{json .Mounts}}"],
             capture_output=True,
             text=True,
             timeout=20,
@@ -243,7 +248,7 @@ def _build_run_command(export_path: Path) -> tuple[list[str], str | None]:
         container_export_dir = host_to_container_path(export_dir)
         container_export_file = f"{container_export_dir}/{export_path.name}"
         cmd = [
-            "docker", "exec",
+            _docker_bin(), "exec",
             "-w", container_export_dir,
             config.DOCKER_CONTAINER_NAME,
             "bash", "-lc",

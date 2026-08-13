@@ -191,33 +191,54 @@ def _element_area(coords: np.ndarray, elem_type: str) -> float:
 _SURFACE_TYPES = ["QU4", "QU8", "TR3", "TR6"]
 
 
+def _med_mesh_name(f: h5py.File) -> str:
+    if "ENS_MAA" not in f:
+        raise ValueError("Not a MED file: missing ENS_MAA group")
+    names = list(f["ENS_MAA"].keys())
+    if not names:
+        raise ValueError("ENS_MAA is empty")
+    if "Mesh_1" in names:
+        return "Mesh_1"
+    return names[0]
+
+
+def _med_step_key(mesh_grp: h5py.Group) -> str:
+    keys = list(mesh_grp.keys())
+    if not keys:
+        raise ValueError("MED mesh has no time/step subgroups")
+    return keys[0]
+
+
 def _resolve_family_ids(f: h5py.File, group_name: str) -> list:
     """A named group (e.g. 'FACE_SUP') can be split across MULTIPLE family
     ids in MED (elements shared with another group get their own composite
     family). Must collect ALL matches, not just the first."""
-    fam_ids = []
-    fas_base = "FAS/Mesh_1/ELEME"
+    mesh_name = _med_mesh_name(f)
+    fas_base = f"FAS/{mesh_name}/ELEME"
     if fas_base not in f:
-        raise ValueError("Unexpected MED structure: no FAS/Mesh_1/ELEME group")
+        raise ValueError(f"Unexpected MED structure: no {fas_base} group")
+    fam_ids = []
     for key in f[fas_base].keys():
+        grp = f[f"{fas_base}/{key}"]
         nom_path = f"{fas_base}/{key}/GRO/NOM"
-        if nom_path in f:
-            raw = f[nom_path][:]
-            names = [bytes(row).decode("ascii", errors="ignore").strip() for row in raw]
-            if group_name in names:
-                # family id is embedded in keys like "FAM_-8_FACE_SUP" or
-                # generic "Family_-100"; the numeric attribute is the
-                # authoritative id, not necessarily parseable from the key,
-                # so read it via the mesh element FAM dataset's stored ints
-                # instead - here we just try parsing the key, which matches
-                # every case Code_Aster's own mesh writer produces.
-                parts = key.split("_")
-                for part in parts:
-                    try:
-                        fam_ids.append(int(part))
-                        break
-                    except ValueError:
-                        continue
+        if nom_path not in f:
+            continue
+        raw = f[nom_path][:]
+        names = [bytes(row).decode("ascii", errors="ignore").strip() for row in raw]
+        if group_name not in names:
+            continue
+        # Gmsh MED: family id stored on the ELEME subgroup attribute NUM
+        if "NUM" in grp.attrs:
+            fam_ids.append(int(grp.attrs["NUM"]))
+            continue
+        # Code_Aster MED: family id embedded in keys like "FAM_-8_FACE_SUP"
+        parts = key.split("_")
+        for part in parts:
+            try:
+                fam_ids.append(int(part))
+                break
+            except ValueError:
+                continue
     return fam_ids
 
 
@@ -231,9 +252,9 @@ def compute_face_area(mesh_path: str, group_name: str) -> float:
     """
     mesh_path = str(mesh_path)
     with h5py.File(mesh_path, "r") as f:
-        mesh_grp = f["ENS_MAA/Mesh_1"]
-        # the timestep/iteration subgroup name varies; take the first one
-        step_key = next(iter(mesh_grp.keys()))
+        mesh_name = _med_mesh_name(f)
+        mesh_grp = f[f"ENS_MAA/{mesh_name}"]
+        step_key = _med_step_key(mesh_grp)
         step = mesh_grp[step_key]
 
         coo = step["NOE/COO"][:]

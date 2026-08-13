@@ -1,0 +1,8 @@
+P time_limit 300
+P memory_limit 512
+P ncpus 1
+P mpi_nbcpu 1
+P mpi_nbnoeud 1
+F comm run_affcb26c.comm D 1
+F mmed /data/gmsh-mcp-server/meshes/piston_first_pass.med D 21
+F rmed run_affcb26c.rmed R 80

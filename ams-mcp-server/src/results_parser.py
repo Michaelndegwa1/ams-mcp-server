@@ -95,9 +95,10 @@ def parse_results(result_path: Path, yield_strength_mpa: float = 235.0) -> dict:
             if sief_path is None:
                 logger.warning("No dataset path containing 'SIEF' found. Run inspect_structure() to locate it.")
             else:
-                sief = np.asarray(f[sief_path][()])
-                # Expect columns ordered SIXX, SIYY, SIZZ, SIXY, SIYZ, SIXZ (Code_Aster convention)
-                if sief.shape[-1] >= 6:
+                sief = np.asarray(f[sief_path][()], dtype=float)
+                if sief.ndim == 1 and sief.size % 6 == 0:
+                    sief = sief.reshape(-1, 6)
+                if sief.ndim >= 2 and sief.shape[-1] >= 6:
                     s11, s22, s33 = sief[..., 0], sief[..., 1], sief[..., 2]
                     s12, s23, s13 = sief[..., 3], sief[..., 4], sief[..., 5]
                     vm = np.sqrt(

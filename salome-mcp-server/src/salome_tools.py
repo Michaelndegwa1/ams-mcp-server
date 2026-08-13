@@ -54,9 +54,10 @@ def _run(body: str, outputs: dict[str, Path]) -> dict:
 def build_box(dx: float, dy: float, dz: float, output_step: str | None = None) -> dict:
     step = _out(output_step, "box", ".step")
     body = f"""
+import GEOM
 box = geompy.MakeBoxDXDYDZ({float(dx)}, {float(dy)}, {float(dz)})
 geompy.addToStudy(box, "Box")
-if not geompy.ExportSTEP(box, {str(step)!r}, GEOM.LU_METER):
+if not geompy.ExportSTEP(box, {str(step)!r}, GEOM.LU_MILLIMETER):
     raise RuntimeError("ExportSTEP failed")
 """
     return _run(body, {"step": step})
@@ -68,7 +69,7 @@ def build_cylinder(radius: float, height: float, output_step: str | None = None)
 cyl = geompy.MakeCylinderRH({float(radius)}, {float(height)})
 geompy.addToStudy(cyl, "Cylinder")
 import GEOM
-if not geompy.ExportSTEP(cyl, {str(step)!r}, GEOM.LU_METER):
+if not geompy.ExportSTEP(cyl, {str(step)!r}, GEOM.LU_MILLIMETER):
     raise RuntimeError("ExportSTEP failed")
 """
     return _run(body, {"step": step})

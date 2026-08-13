@@ -65,4 +65,7 @@ def pipeline_status() -> str:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http" if config.MCP_TRANSPORT != "stdio" else None) or mcp.run()
+    if config.MCP_TRANSPORT == "stdio":
+        mcp.run()
+    else:
+        mcp.run(transport="streamable-http")

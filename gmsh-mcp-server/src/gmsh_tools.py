@@ -101,6 +101,36 @@ def _auto_tag_cylinder_end_caps(gmsh, height: float, z_base: float = 0.0, tol: f
     return applied
 
 
+def _auto_tag_z_extremes(gmsh, tol: float | None = None) -> list[dict[str, Any]]:
+    """Tag lowest-Z end cap FACE_INF and highest-Z end cap FACE_SUP (revolved pistons)."""
+    surfaces = [tag for dim, tag in gmsh.model.getEntities(2)]
+    if not surfaces:
+        return []
+    z_centers = {tag: _surface_center_z(gmsh, tag) for tag in surfaces}
+    z_min = min(z_centers.values())
+    z_max = max(z_centers.values())
+    span = z_max - z_min
+    if tol is None:
+        tol = max(span * 0.05, 1e-3)
+    bottom = [tag for tag, zc in z_centers.items() if abs(zc - z_min) <= tol]
+    top = [tag for tag, zc in z_centers.items() if abs(zc - z_max) <= tol]
+    applied: list[dict[str, Any]] = []
+    if bottom:
+        pg = gmsh.model.addPhysicalGroup(2, bottom)
+        gmsh.model.setPhysicalName(2, pg, "FACE_INF")
+        applied.append({"dimension": 2, "name": "FACE_INF", "entities": bottom, "tag": pg})
+    if top:
+        pg = gmsh.model.addPhysicalGroup(2, top)
+        gmsh.model.setPhysicalName(2, pg, "FACE_SUP")
+        applied.append({"dimension": 2, "name": "FACE_SUP", "entities": top, "tag": pg})
+    volumes = [tag for dim, tag in gmsh.model.getEntities(3)]
+    if volumes:
+        pg = gmsh.model.addPhysicalGroup(3, volumes)
+        gmsh.model.setPhysicalName(3, pg, "SOLID")
+        applied.append({"dimension": 3, "name": "SOLID", "entities": volumes, "tag": pg})
+    return applied
+
+
 def _apply_physical_groups(groups: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not groups:
         return []
@@ -258,11 +288,15 @@ def build_revolved_solid(
             gmsh.option.setNumber("Mesh.CharacteristicLengthMin", float(mesh_size) * 0.5)
 
         applied_groups = _apply_physical_groups(physical_groups)
+        if mesh_size is not None and not applied_groups:
+            gmsh.model.occ.synchronize()
+            applied_groups = _auto_tag_z_extremes(gmsh)
 
         export_path = None
         mesh_info = None
         if mesh_size is not None:
-            gmsh.model.occ.synchronize()
+            if not applied_groups:
+                gmsh.model.occ.synchronize()
             gmsh.model.mesh.generate(3)
             mesh_info = _mesh_stats()
             if output_path:

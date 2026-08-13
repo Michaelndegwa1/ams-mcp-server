@@ -6,10 +6,12 @@ No other module should call os.environ directly.
 import os
 import logging
 import subprocess
+import shutil
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(_PROJECT_ROOT / ".env")
 
 # --- Core paths ---------------------------------------------------------
 # CODE_ASTER_PATH must point to the as_run (or run_aster) executable
@@ -30,6 +32,8 @@ DOCKER_WORKSPACE = os.environ.get("DOCKER_WORKSPACE", "").strip() or None
 DOCKER_WORKSPACE_HOST = os.environ.get("DOCKER_WORKSPACE_HOST", "").strip() or None
 
 OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", "./outputs"))
+if not OUTPUT_DIR.is_absolute():
+    OUTPUT_DIR = (_PROJECT_ROOT / OUTPUT_DIR).resolve()
 LOG_LEVEL_NAME = os.environ.get("LOG_LEVEL", "INFO")
 LOG_LEVEL = getattr(logging, LOG_LEVEL_NAME.upper(), logging.INFO)
 
@@ -44,6 +48,10 @@ MCP_PORT = int(os.environ.get("MCP_PORT", "8765"))
 MCP_TRANSPORT = os.environ.get("MCP_TRANSPORT", "streamable-http").strip().lower()
 
 
+def _docker_bin() -> str:
+    return shutil.which("docker") or "docker"
+
+
 def _solver_exists_here() -> bool:
     if CODE_ASTER_PATH.startswith("/"):
         return os.path.isfile(CODE_ASTER_PATH)
@@ -55,7 +63,7 @@ def _solver_exists_in_container() -> bool:
         return False
     try:
         result = subprocess.run(
-            ["docker", "exec", DOCKER_CONTAINER_NAME, "test", "-x", CODE_ASTER_PATH],
+            [_docker_bin(), "exec", DOCKER_CONTAINER_NAME, "test", "-x", CODE_ASTER_PATH],
             capture_output=True,
             timeout=20,
         )

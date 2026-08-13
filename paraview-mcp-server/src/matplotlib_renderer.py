@@ -53,6 +53,14 @@ def render_field_scatter(
         return {"status": "error", "message": f"Field '{field}' not found in {data['path']}"}
 
     values = np.asarray(values, dtype=float).reshape(-1)
+    plot_coords = data.get("plot_coordinates")
+    plot_values = data.get("plot_values")
+    coords = data.get("coordinates")
+
+    if plot_coords is not None and plot_values is not None and field in ("von_mises", "stress", "von_mises_mpa"):
+        coords = np.asarray(plot_coords)
+        values = np.asarray(plot_values, dtype=float).reshape(-1)
+
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -64,6 +72,8 @@ def render_field_scatter(
         ax.set_xlabel(f"{axis_title.split()[0]} (mm)")
         ax.set_ylabel(f"{axis_title.split()[2]} (mm)")
         ax.set_aspect("equal", adjustable="box")
+        if data.get("plot_location") == "element_centroid":
+            axis_title = f"{axis_title} — element stress"
     else:
         sc = ax.scatter(np.arange(len(values)), values, c=values, cmap=colormap, s=12)
         ax.set_xlabel("Sample index")

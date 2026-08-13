@@ -62,9 +62,25 @@ def parse_inp_mesh(inp_path: Path) -> dict:
                     start, stop, step = int(parts[0]), int(parts[1]), int(parts[2])
                     ids.update(range(start, stop + 1, step))
                 elif parts:
-                    ids.add(int(parts[0]))
+                    ids.update(int(p) for p in parts)
                 i += 1
             nsets[nset] = ids
+            continue
+        if upper.startswith("*ELSET"):
+            elset_match = re.search(r"ELSET=([A-Za-z0-9_\-]+)", line, re.I)
+            elset = elset_match.group(1) if elset_match else "DEFAULT"
+            generate = "GENERATE" in upper
+            i += 1
+            ids: list[int] = []
+            while i < len(lines) and not lines[i].strip().startswith("*"):
+                parts = [p.strip() for p in lines[i].split(",") if p.strip()]
+                if generate and len(parts) >= 3:
+                    start, stop, step = int(parts[0]), int(parts[1]), int(parts[2])
+                    ids.extend(range(start, stop + 1, step))
+                else:
+                    ids.extend(int(p) for p in parts)
+                i += 1
+            elsets[elset] = ids
             continue
         i += 1
 
@@ -99,3 +115,38 @@ def compute_elset_area(inp_path: Path, elset_name: str) -> float:
         raise ValueError(f"Non-positive area for ELSET '{elset_name}'")
     logger.info("ELSET '%s' area = %.6f mm^2", elset_name, total)
     return total
+
+
+def compute_nset_area(inp_path: Path, nset_name: str) -> float:
+    mesh = parse_inp_mesh(inp_path)
+    nodes = mesh["nodes"]
+    nset = mesh["nsets"].get(nset_name)
+    if not nset:
+        raise ValueError(f"NSET '{nset_name}' not found in {inp_path}")
+
+    pts = np.array([nodes[n] for n in nset])
+    centroid = pts.mean(axis=0)
+    ranges = pts.max(axis=0) - pts.min(axis=0)
+    axis = int(np.argmin(ranges))
+    i, j = (0, 1) if axis == 2 else ((1, 2) if axis == 0 else (0, 2))
+    cx, cy = centroid[i], centroid[j]
+    angles = np.arctan2(pts[:, j] - cy, pts[:, i] - cx)
+    ordered = pts[np.argsort(angles)]
+    area = 0.0
+    for k in range(len(ordered)):
+        a, b = ordered[k], ordered[(k + 1) % len(ordered)]
+        area += (a[i] - cx) * (b[j] - cy) - (b[i] - cx) * (a[j] - cy)
+    area = abs(area) / 2.0
+    if area <= 0:
+        raise ValueError(f"Non-positive area for NSET '{nset_name}'")
+    logger.info("NSET '%s' area = %.6f mm^2", nset_name, area)
+    return area
+
+
+def compute_group_area(inp_path: Path, group_name: str) -> float:
+    mesh = parse_inp_mesh(inp_path)
+    if group_name in mesh["elsets"]:
+        return compute_elset_area(inp_path, group_name)
+    if group_name in mesh["nsets"]:
+        return compute_nset_area(inp_path, group_name)
+    raise ValueError(f"Group '{group_name}' not found as ELSET or NSET in {inp_path}")
