@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
-import h5py
 import matplotlib
 
 matplotlib.use("Agg")
@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent
-MED = REPO / "gmsh-mcp-server" / "meshes" / "piston_first_pass.med"
 OUT = REPO / "paraview-mcp-server" / "renders" / "piston_design.png"
+PARAVIEW_SRC = REPO / "paraview-mcp-server"
 
 REFERENCE_PROFILE = [
     [25, 0],
@@ -38,14 +38,11 @@ def scaled_profile() -> np.ndarray:
 
 
 def main() -> None:
-    profile = scaled_profile()
+    sys.path.insert(0, str(PARAVIEW_SRC))
+    from src.revolve_mesh import build_revolved_solid_mesh, scale_profile
+    from src.render_3d import render_design_3d_from_profile
 
-    with h5py.File(MED, "r") as f:
-        mesh_name = list(f["ENS_MAA"].keys())[0]
-        step_key = list(f[f"ENS_MAA/{mesh_name}"].keys())[0]
-        grp = f[f"ENS_MAA/{mesh_name}/{step_key}"]
-        coords = grp["NOE/COO"][:].reshape(-1, 3)
-        tr3 = grp["MAI/TR3/NOD"][:].reshape(-1, 3).astype(int) - 1
+    profile = scaled_profile()
 
     fig = plt.figure(figsize=(14, 6), dpi=140)
 
@@ -66,15 +63,16 @@ def main() -> None:
     ax2 = fig.add_subplot(122, projection="3d")
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-    sample = np.linspace(0, len(tr3) - 1, min(800, len(tr3)), dtype=int)
-    faces = [coords[tri] for tri in tr3[sample]]
-    mesh_art = Poly3DCollection(faces, alpha=0.45, facecolor="#5b9bd5", edgecolor="#2e6da4", linewidths=0.05)
+    prof = scale_profile(REFERENCE_PROFILE, BORE_MM, HEIGHT_MM)
+    coords3d, tris3d = build_revolved_solid_mesh(prof, n_theta=72)
+    polys = [coords3d[t] for t in tris3d]
+    mesh_art = Poly3DCollection(polys, alpha=0.92, facecolor="#8a9ba8", edgecolor="none")
     ax2.add_collection3d(mesh_art)
-    ax2.auto_scale_xyz(coords[:, 0], coords[:, 1], coords[:, 2])
+    ax2.auto_scale_xyz(coords3d[:, 0], coords3d[:, 1], coords3d[:, 2])
     ax2.set_xlabel("X (mm)")
     ax2.set_ylabel("Y (mm)")
     ax2.set_zlabel("Z (mm)")
-    ax2.set_title("3D meshed solid")
+    ax2.set_title("3D solid (revolved profile)")
     ax2.view_init(elev=22, azim=-55)
 
     fig.suptitle(
@@ -86,6 +84,18 @@ def main() -> None:
     fig.savefig(OUT, bbox_inches="tight")
     plt.close(fig)
     print(f"Wrote {OUT}")
+
+    # Interactive 3D design (rotate in browser)
+    html_out = REPO / "paraview-mcp-server" / "renders" / "piston_design_3d.html"
+    profile_rz = scale_profile(REFERENCE_PROFILE, BORE_MM, HEIGHT_MM)
+    render_design_3d_from_profile(
+        profile_rz,
+        str(html_out),
+        title="Piston design — 3D solid",
+        subtitle=f'{BORE_MM / 25.4:.3f}" bore × {HEIGHT_MM:.0f} mm height (LS3-class V8)',
+    )
+    print(f"Wrote {html_out.resolve()}")
+    print("Open the .html file in Chrome/Edge — drag to rotate, scroll to zoom.")
 
 
 if __name__ == "__main__":

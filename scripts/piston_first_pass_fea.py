@@ -298,6 +298,24 @@ def main() -> int:
             print("\n=== Step 7b — Stress PNG ===")
             print(f"No .rmed found for run_id {fea.get('run_id')} — render skipped.")
 
+    if not args.skip_render and fea.get("status") == "success":
+        rmed_candidates = list((REPO / "ams-mcp-server" / "outputs").glob(f"run_{fea.get('run_id')}*.rmed"))
+        if rmed_candidates:
+            try:
+                sys.path.insert(0, str(REPO / "paraview-mcp-server"))
+                from src.render_3d import render_interactive_3d, render_multiview_png
+
+                print("\n=== Step 7c — 3D stress/displacement ===")
+                html_out = REPO / "paraview-mcp-server" / "renders" / "piston_3d_stress.html"
+                png3d = REPO / "paraview-mcp-server" / "renders" / "piston_3d_stress.png"
+                r3d = render_interactive_3d(str(rmed_candidates[0]), str(html_out))
+                render_multiview_png(str(rmed_candidates[0]), str(png3d))
+                print(f"  Interactive: {html_out}")
+                print(f"  4-view PNG:  {png3d}")
+                print(f"  max stress {r3d.get('max_stress_mpa', 0):.1f} MPa  |  max |u| {r3d.get('max_displacement_mm', 0):.4f} mm")
+            except Exception as exc:
+                print(f"\n=== Step 7c — 3D render skipped: {exc} ===")
+
     print("\n=== Step 8 (later) ===")
     print("  Full CAD (FreeCAD), ring grooves, thermal coupling — not in this script.")
     return 0

@@ -41,6 +41,141 @@ def _tet_faces(n: np.ndarray) -> list[tuple[int, int, int]]:
     return [(a, b, c), (a, b, d), (a, c, d), (b, c, d)]
 
 
+def load_volume_mesh(mesh_path: str) -> dict:
+    """Load solid mesh geometry from a Gmsh or result .med file (no stress required)."""
+    path = Path(mesh_path)
+    with h5py.File(path, "r") as f:
+        paths = _collect_paths(f)
+        mesh_name = list(f["ENS_MAA"].keys())[0]
+        step = list(f[f"ENS_MAA/{mesh_name}"].keys())[0]
+        base = f"ENS_MAA/{mesh_name}/{step}"
+        coords = f[f"{base}/NOE/COO"][:].reshape(-1, 3).astype(float)
+        nod_path = _find_path(paths, "MAI", "TE4", "NOD") or _find_path(paths, "MAI", "TET4", "NOD")
+        if not nod_path:
+            te4 = f"{base}/MAI/TE4/NOD"
+            if te4 in f:
+                nod_path = te4
+        if not nod_path:
+            raise ValueError("No TE4/TET4 volume mesh in MED file")
+        conn = f[nod_path][:].reshape(-1, 4).astype(int) - 1
+
+    return {
+        "path": str(path.resolve()),
+        "coordinates": coords,
+        "connectivity": conn,
+    }
+
+
+def render_design_3d(
+    mesh_path: str | None,
+    output_html: str,
+    title: str = "Piston design — 3D",
+    subtitle: str | None = None,
+    profile_rz: list[list[float]] | None = None,
+) -> dict:
+    """Rotatable 3D CAD view of the piston (clean revolved solid, not FEA mesh)."""
+    import plotly.graph_objects as go
+
+    from src.revolve_mesh import build_revolved_solid_mesh
+
+    if profile_rz is None:
+        raise ValueError("profile_rz required for design view")
+
+    coords, tris = build_revolved_solid_mesh(profile_rz, n_theta=120)
+    x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+    i, j, k = tris[:, 0], tris[:, 1], tris[:, 2]
+
+    fig = go.Figure(
+        data=[
+            go.Mesh3d(
+                x=x,
+                y=y,
+                z=z,
+                i=i,
+                j=j,
+                k=k,
+                color="#8a9ba8",
+                flatshading=False,
+                lighting=dict(ambient=0.55, diffuse=0.85, specular=0.55, roughness=0.25),
+                lightposition=dict(x=100, y=150, z=200),
+                hovertemplate="X: %{x:.1f}<br>Y: %{y:.1f}<br>Z: %{z:.1f} mm<extra></extra>",
+            )
+        ]
+    )
+    fig.update_layout(
+        title=dict(text=f"{title}<br><sup>{subtitle or ''}</sup>", x=0.5),
+        scene=dict(
+            xaxis_title="X (mm)",
+            yaxis_title="Y (mm)",
+            zaxis_title="Z (mm)",
+            aspectmode="data",
+            bgcolor="#eef2f6",
+            camera=dict(eye=dict(x=1.6, y=1.6, z=0.9)),
+        ),
+        margin=dict(l=0, r=0, t=70, b=0),
+        paper_bgcolor="#ffffff",
+        height=720,
+        width=960,
+    )
+
+    out = Path(output_html)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.write_html(str(out), include_plotlyjs="cdn", full_html=True)
+    logger.info("Wrote design 3D %s", out)
+
+    return {
+        "status": "success",
+        "output_html": str(out.resolve()),
+        "node_count": len(coords),
+        "triangle_count": len(tris),
+        "source": "revolved_profile",
+    }
+
+
+def render_design_3d_legacy_med(
+    mesh_path: str,
+    output_html: str,
+    title: str = "Piston design — 3D",
+    subtitle: str | None = None,
+) -> dict:
+    """Legacy: mesh from MED (can look noisy). Prefer render_design_3d with profile."""
+    import plotly.graph_objects as go
+
+    data = load_volume_mesh(mesh_path)
+    coords = data["coordinates"]
+    conn = data["connectivity"]
+    tris, _ = _boundary_triangles(conn)
+
+    x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+    i, j, k = tris[:, 0], tris[:, 1], tris[:, 2]
+    z_color = coords[:, 2]
+
+    fig = go.Figure(
+        data=[
+            go.Mesh3d(
+                x=x, y=y, z=z, i=i, j=j, k=k,
+                intensity=z_color, intensitymode="vertex",
+                colorscale=[[0, "#2c5282"], [0.5, "#4299e1"], [1, "#bee3f8"]],
+                colorbar=dict(title="Z (mm)", len=0.7),
+            )
+        ]
+    )
+    fig.update_layout(title=title, scene=dict(aspectmode="data"))
+    out = Path(output_html)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.write_html(str(out), include_plotlyjs="cdn")
+    return {"status": "success", "output_html": str(out.resolve())}
+
+
+def render_design_3d_from_profile(
+    profile_rz: list[list[float]],
+    output_html: str,
+    title: str = "Piston design — 3D",
+    subtitle: str | None = None,
+) -> dict:
+    return render_design_3d(None, output_html, title=title, subtitle=subtitle, profile_rz=profile_rz)
+
+
 def load_volume_result(result_path: str) -> dict:
     path = Path(result_path)
     with h5py.File(path, "r") as f:
