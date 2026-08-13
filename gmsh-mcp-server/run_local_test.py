@@ -17,17 +17,13 @@ from src import gmsh_tools
 
 def main() -> None:
     config.validate_config()
-    output = sys.argv[1] if len(sys.argv) > 1 else "meshes/test_cylinder.med"
+    output = sys.argv[1] if len(sys.argv) > 1 else "test_cylinder.med"
 
     # Simple steel-beam-like cylinder: r=5 mm, h=100 mm
     result = gmsh_tools.build_cylinder(
         radius=5.0,
         height=100.0,
         mesh_size=3.0,
-        physical_groups={
-            "volumes": {"SOLID": [1]},
-            "surfaces": {"FACE_INF": [1], "FACE_SUP": [2]},
-        },
         output_path=output,
     )
 

@@ -66,6 +66,41 @@ def _entity_summary() -> dict[str, Any]:
     }
 
 
+def _surface_center_z(gmsh, surface_tag: int) -> float:
+    xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.occ.getBoundingBox(2, surface_tag)
+    return (zmin + zmax) / 2.0
+
+
+def _auto_tag_cylinder_end_caps(gmsh, height: float, z_base: float = 0.0, tol: float | None = None) -> list[dict[str, Any]]:
+    """Name bottom/top end caps FACE_INF / FACE_SUP by Z position."""
+    if tol is None:
+        tol = max(float(height) * 0.05, 1e-3)
+    surfaces = [tag for dim, tag in gmsh.model.getEntities(2)]
+    bottom = []
+    top = []
+    for tag in surfaces:
+        zc = _surface_center_z(gmsh, tag)
+        if abs(zc - z_base) <= tol:
+            bottom.append(tag)
+        elif abs(zc - (z_base + float(height))) <= tol:
+            top.append(tag)
+    applied = []
+    if bottom:
+        pg = gmsh.model.addPhysicalGroup(2, bottom)
+        gmsh.model.setPhysicalName(2, pg, "FACE_INF")
+        applied.append({"dimension": 2, "name": "FACE_INF", "entities": bottom, "tag": pg})
+    if top:
+        pg = gmsh.model.addPhysicalGroup(2, top)
+        gmsh.model.setPhysicalName(2, pg, "FACE_SUP")
+        applied.append({"dimension": 2, "name": "FACE_SUP", "entities": top, "tag": pg})
+    volumes = [tag for dim, tag in gmsh.model.getEntities(3)]
+    if volumes:
+        pg = gmsh.model.addPhysicalGroup(3, volumes)
+        gmsh.model.setPhysicalName(3, pg, "SOLID")
+        applied.append({"dimension": 3, "name": "SOLID", "entities": volumes, "tag": pg})
+    return applied
+
+
 def _apply_physical_groups(groups: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not groups:
         return []
@@ -151,6 +186,7 @@ def build_extrusion(
         export_path = None
         mesh_info = None
         if mesh_size is not None:
+            gmsh.model.occ.synchronize()
             gmsh.model.mesh.generate(3)
             mesh_info = _mesh_stats()
             if output_path:
@@ -226,6 +262,7 @@ def build_revolved_solid(
         export_path = None
         mesh_info = None
         if mesh_size is not None:
+            gmsh.model.occ.synchronize()
             gmsh.model.mesh.generate(3)
             mesh_info = _mesh_stats()
             if output_path:
@@ -280,11 +317,16 @@ def build_cylinder(
             gmsh.option.setNumber("Mesh.CharacteristicLengthMax", float(mesh_size))
             gmsh.option.setNumber("Mesh.CharacteristicLengthMin", float(mesh_size) * 0.5)
 
-        applied_groups = _apply_physical_groups(physical_groups)
+        if physical_groups:
+            applied_groups = _apply_physical_groups(physical_groups)
+        else:
+            gmsh.model.occ.synchronize()
+            applied_groups = _auto_tag_cylinder_end_caps(gmsh, height=float(height), z_base=float(cz))
 
         export_path = None
         mesh_info = None
         if mesh_size is not None:
+            gmsh.model.occ.synchronize()
             gmsh.model.mesh.generate(3)
             mesh_info = _mesh_stats()
             if output_path:
@@ -346,6 +388,7 @@ def mesh_and_export(
         gmsh.option.setNumber("Mesh.CharacteristicLengthMax", float(mesh_size))
         gmsh.option.setNumber("Mesh.CharacteristicLengthMin", float(mesh_size) * 0.5)
         _apply_physical_groups(physical_groups)
+        gmsh.model.occ.synchronize()
         gmsh.model.mesh.generate(3)
         gmsh.write(str(export_path))
         return {

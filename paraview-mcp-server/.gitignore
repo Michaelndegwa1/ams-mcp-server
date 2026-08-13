@@ -1,0 +1,9 @@
+env/
+__pycache__/
+*.py[cod]
+.env
+outputs/
+renders/
+*.png
+*.rmed
+cloudflared.exe
