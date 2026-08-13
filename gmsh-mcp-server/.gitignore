@@ -1,0 +1,27 @@
+# Python
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Secrets and local config
+.env
+cloudflared/config.yml
+cloudflared/*.json
+
+# Generated artifacts
+outputs/
+meshes/
+*.med
+*.msh
+*.geo
+*.brep
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+cloudflared.exe
