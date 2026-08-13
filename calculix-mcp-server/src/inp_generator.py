@@ -53,7 +53,7 @@ def generate_inp(
     lines.append(f"*SOLID SECTION, ELSET={params.solid_elset}, MATERIAL=STEEL")
     lines.append("")
 
-    generated_nsets: list[str] = []
+    lines.append("*BOUNDARY")
     for bc in params.boundary_conditions:
         nset = bc.group_name
         if nset not in mesh["nsets"]:
@@ -63,7 +63,6 @@ def generate_inp(
                 lines.extend(_format_nset(gen_name, nodes))
                 lines.append("")
                 nset = gen_name
-                generated_nsets.append(gen_name)
             else:
                 raise ValueError(
                     f"Boundary group '{bc.group_name}' not found as NSET or ELSET in mesh"
@@ -72,7 +71,6 @@ def generate_inp(
         if not dof_nums:
             continue
         first, last = min(dof_nums), max(dof_nums)
-        lines.append(f"*BOUNDARY")
         lines.append(f"{nset}, {first}, {last}, 0")
 
     lines.append("")
